@@ -5,7 +5,7 @@
 
 #   This file is part of emesene.
 #
-#    Emesene is free software; you can redistribute it and/or modify
+#    emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation; either version 3 of the License, or
 #    (at your option) any later version.
@@ -20,15 +20,15 @@
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 import os
+from e3.common.utils import project_path
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.abspath(project_path()))
 
 import sys
-import gtk
-import base64
-import gobject
+import glib
 import gettext
 import optparse
+import shutil
 
 import string
 
@@ -41,7 +41,10 @@ from e3 import msn
 from e3 import jabber
 from e3 import dummy
 
-from gui import gtkui
+try:
+    from gui import gtkui
+except Exception, e:
+    log.error('Cannot find/load (py)gtk: %s' % str(e))
 
 try:
     from e3 import papylib
@@ -181,23 +184,10 @@ class Controller(object):
 
         proxy = self._get_proxy_settings()
         use_http = self.config.get_or_set('b_use_http', False)
-        account = self.config.get_or_set('last_logged_account', '')
+        self.go_login(proxy, use_http)
 
-        #autologin
-        default_session = extension.get_default('session')
-        if account != '' and int(self.config.d_remembers[account]) == 3:
-            password = base64.b64decode(self.config.d_accounts[account])
-            user = e3.Account(account, password,
-                              int(self.config.d_status[account]),
-                              default_session.DEFAULT_HOST)
-            host = default_session.DEFAULT_HOST
-            port = default_session.DEFAULT_PORT
-            self.on_login_connect(user, self.config.session, proxy, use_http,
-                    host, int(port))
-        else:
-            self.go_login(proxy, use_http)
-
-    def go_login(self, proxy=None, use_http=None):
+    def go_login(self, proxy=None, use_http=None, cancel_clicked=False,
+            no_autologin=False):
         '''shows the login GUI'''
         if proxy is None:
             proxy = self._get_proxy_settings()
@@ -213,7 +203,7 @@ class Controller(object):
         self.window.go_login(self.on_login_connect,
             self.on_preferences_changed, self.config,
             self.config_dir, self.config_path, proxy,
-            use_http, self.config.session)
+            use_http, self.config.session, cancel_clicked, no_autologin)
         self.tray_icon.set_login()
         self.window.show()
 
@@ -232,12 +222,18 @@ class Controller(object):
         signals.contact_list_ready.subscribe(self.on_contact_list_ready)
         signals.conv_first_action.subscribe(self.on_new_conversation)
         signals.disconnected.subscribe(self.on_disconnected)
+        signals.picture_change_succeed.subscribe(self.on_picture_change_succeed)
 
     def close_session(self, do_exit=True):
         '''close session'''
 
+        self._remove_subscriptions()
+        if self.conversations:
+            self.conversations.get_parent().hide()
+            self._on_conversation_window_close()
+
         if self.timeout_id:
-            gobject.source_remove(self.timeout_id)
+            glib.source_remove(self.timeout_id)
             self.timeout_id = None
 
         if self.session is not None:
@@ -252,30 +248,25 @@ class Controller(object):
 
         self.config.save(self.config_path)
 
-        if self.conversations:
-            self.conversations.get_parent().hide()
-            self.conversations = None
-
         if do_exit:
             if self.tray_icon is not None:
                 self.tray_icon.set_visible(False)
             self.window.hide()
             self.window = None
 
-            while gtk.events_pending():
-                gtk.main_iteration(False)
-
             sys.exit(0)
 
     def _remove_subscriptions(self):
-        '''remove the subscriptions to signals
-        '''
-        signals = self.session.signals
-        signals.login_succeed.unsubscribe(self.on_login_succeed)
-        signals.login_failed.unsubscribe(self.on_login_failed)
-        signals.contact_list_ready.unsubscribe(self.on_contact_list_ready)
-        signals.conv_first_action.unsubscribe(self.on_new_conversation)
-        signals.disconnected.unsubscribe(self.on_disconnected)
+        '''remove the subscriptions to signals'''
+        if self.session is not None:
+            signals = self.session.signals
+            signals.login_succeed.unsubscribe(self.on_login_succeed)
+            signals.login_failed.unsubscribe(self.on_login_failed)
+            signals.contact_list_ready.unsubscribe(self.on_contact_list_ready)
+            signals.conv_first_action.unsubscribe(self.on_new_conversation)
+            signals.disconnected.unsubscribe(self.on_disconnected)
+            signals.picture_change_succeed.unsubscribe(
+                    self.on_picture_change_succeed)
 
     def save_extensions_config(self):
         '''save the state of the extensions to the config'''
@@ -328,6 +319,14 @@ class Controller(object):
         '''
         width, height, posx, posy = self.window.get_dimensions()
 
+        # when login window is minimized, posx and posy are -32000 on Windows
+        if os.name == "nt":
+            # make sure that the saved dimensions are visible
+            if posx < (-width):
+                posx = 0
+            if posy < (-height):
+                posy = 0
+
         self.config.i_login_posx = posx
         self.config.i_login_posy = posy
         self.config.i_login_width = width
@@ -336,9 +335,6 @@ class Controller(object):
     def draw_main_screen(self):
         '''create and populate the main screen
         '''
-        # I comment this to avoid AttributeError:
-        # 'MainWindow' object has no attribute 'avatar' error
-        # self.window.content.avatar.stop() #stop the avatar amimation...if any..
         self.window.clear()
         self.tray_icon.set_main(self.session)
 
@@ -349,7 +345,8 @@ class Controller(object):
         image_name = self.session.config.get_or_set('image_theme', 'default')
         emote_name = self.session.config.get_or_set('emote_theme', 'default')
         sound_name = self.session.config.get_or_set('sound_theme', 'default')
-        conv_name = self.session.config.get_or_set('adium_theme', 'renkoo.AdiumMessagesStyle')
+        conv_name = self.session.config.get_or_set('adium_theme',
+                'renkoo.AdiumMessagesStyle')
         gui.theme.set_theme(image_name, emote_name, sound_name, conv_name)
 
         last_avatar = self.session.config.get_or_set('last_avatar',
@@ -376,11 +373,12 @@ class Controller(object):
 
         window.set_location(width, height, posx, posy)
 
-    def on_preferences_changed(self, use_http, proxy, session_id):
+    def on_preferences_changed(self, use_http, proxy, session_id, service):
         '''called when the preferences on login change'''
         self.config.session = session_id
         extension.set_default_by_id('session', session_id)
         self.config.b_use_http = use_http
+        self.config.service = service
         self._save_proxy_settings(proxy)
 
     def on_login_failed(self, reason):
@@ -405,10 +403,13 @@ class Controller(object):
         self._set_location(self.window)
         self.cur_service = [host, port]
         if not on_reconnect:
-            self.on_preferences_changed(use_http, proxy, session_id)
+            self.on_preferences_changed(use_http, proxy, session_id,
+                    self.config.service)
             self.window.clear()
-            self.avatar_path = self.config_dir.join(host, account.account, 'avatars', 'last')
-            self.window.go_connect(self.on_cancel_login, self.avatar_path)
+            self.avatar_path = self.config_dir.join(host, account.account,
+                    'avatars', 'last')
+            self.window.go_connect(self.on_cancel_login, self.avatar_path,
+                    self.config)
             self.window.show()
         else:
             self.window.content.clear_connect()
@@ -416,6 +417,8 @@ class Controller(object):
         self._new_session()
 
         # set default values if not already set
+        self.session.config.get_or_set('b_conv_minimized', True)
+        self.session.config.get_or_set('b_mute_sounds', False)
         self.session.config.get_or_set('b_play_send', True)
         self.session.config.get_or_set('b_play_nudge', True)
         self.session.config.get_or_set('b_play_first_send', True)
@@ -431,9 +434,12 @@ class Controller(object):
         self.session.config.get_or_set('b_show_info', True)
         self.session.config.get_or_set('b_show_toolbar', True)
         self.session.config.get_or_set('b_allow_auto_scroll', True)
-        self.session.config.get_or_set('adium_theme', 'renkoo.AdiumMessageStyle')
+        self.session.config.get_or_set('adium_theme',
+                'renkoo.AdiumMessageStyle')
+        self.session.config.get_or_set('b_enable_spell_check', False)
 
-        self.timeout_id = gobject.timeout_add(500, self.session.signals._handle_events)
+        self.timeout_id = glib.timeout_add(500,
+                self.session.signals._handle_events)
         self.session.login(account.account, account.password, account.status,
             proxy, host, port, use_http)
 
@@ -443,7 +449,7 @@ class Controller(object):
         '''
         if self.session is not None:
             self.session.quit()
-        self.go_login()
+        self.go_login(cancel_clicked=True)
 
     def on_contact_list_ready(self):
         '''callback called when the contact list is ready to be used'''
@@ -467,15 +473,10 @@ class Controller(object):
             dialog = extension.get_default('dialog')
             dialog.contact_added_you(accounts, on_contact_added_you)
 
-        gobject.timeout_add(500, self.session.logger.check)
+        glib.timeout_add(500, self.session.logger.check)
 
-        #we instantiate this here to prevent the whole contact list
-        #online notification
-        def instantiate_notification():
-            notificationcls = extension.get_default('notification')
-            self.notification = notificationcls(self.session)
-
-        gobject.timeout_add(10000, instantiate_notification)
+        notificationcls = extension.get_default('notification')
+        self.notification = notificationcls(self.session)
 
     def on_new_conversation(self, cid, members, other_started=True):
         '''callback called when the other user does an action that justify
@@ -488,6 +489,8 @@ class Controller(object):
             self._set_location(window, True)
             self.conversations = window.content
             self.tray_icon.set_conversations(self.conversations)
+            if self.session.config.b_conv_minimized:
+                window.iconify()
             window.show()
 
         conversation = self.conversations.new_conversation(cid, members)
@@ -500,28 +503,35 @@ class Controller(object):
         #    when clicking on a user icon
         # b) place cursor on text box
         # both the show() calls are needed - won't work otherwise
+        # EDIT: it works with the first show() setting the input as the first
+        #       focused widget and deniing focus to notebook's tabs
 
         conversation.show() # puts widget visible
 
-        # conversation widget MUST be visible (cf. previous line)
-        self.conversations.set_current_page(conversation.tab_index)
-
         # raises the container (tabbed windows) if its minimized
-        self.conversations.get_parent().present()
+        if not other_started:
+            self.conversations.set_current_page(conversation.tab_index)
+            self.conversations.get_parent().present()
 
-        conversation.show() # puts cursor in textbox
-
-        play = extension.get_default('sound')
-        if other_started and \
-            self.session.contacts.me.status != e3.status.BUSY and \
-            self.session.config.b_play_first_send:
-
-            play(gui.theme.sound_send)
+        if not self.session.config.b_mute_sounds and other_started and \
+           self.session.contacts.me.status != e3.status.BUSY and \
+           self.session.config.b_play_first_send and not \
+           self.session.config.b_play_type:
+            gui.play(self.session, gui.theme.sound_send)
 
     def _on_conversation_window_close(self):
         '''method called when the conversation window is closed'''
         width, height, posx, posy = \
                 self.conversations.get_parent().get_dimensions()
+
+        # when window is minimized, posx and posy are -32000 on Windows
+        if os.name == "nt":
+            # make sure that the saved dimensions are visible
+            if posx < (-width):
+                posx = 0
+            if posy < (-height):
+                posy = 0
+
         self.session.config.i_conv_width = width
         self.session.config.i_conv_height = height
         self.session.config.i_conv_posx = posx
@@ -535,7 +545,7 @@ class Controller(object):
         method called when the user selects disconnect
         '''
         self.close_session(False)
-        self.go_login()
+        self.go_login(no_autologin=True)
 
     def on_close(self):
         '''called on close'''
@@ -555,13 +565,20 @@ class Controller(object):
     def on_reconnect(self, account):
         '''makes the reconnect after 30 seconds'''
         self.window.clear()
-        self.window.go_connect(self.on_cancel_login, self.avatar_path)
-        
+        self.window.go_connect(self.on_cancel_login, self.avatar_path,
+                self.config)
+
         proxy = self._get_proxy_settings()
         use_http = self.config.get_or_set('b_use_http', False)
-        self.window.content.on_reconnect(self.on_login_connect, account,\
-                                         self.config.session, proxy, use_http,\
+        self.window.content.on_reconnect(self.on_login_connect, account, \
+                                         self.config.session, proxy, use_http, \
                                          self.cur_service)
+
+    def on_picture_change_succeed(self, account, path):
+        '''save the avatar change as the last avatar'''
+        if account == self.session.account.account:
+            last_avatar_path = self.session.config_dir.get_path("last_avatar")
+            shutil.copy(path, last_avatar_path)
 
 class ExtensionDefault(object):
     '''extension to register options for extensions'''

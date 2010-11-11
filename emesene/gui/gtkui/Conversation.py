@@ -13,10 +13,10 @@ class Conversation(gtk.VBox, gui.Conversation):
     AUTHOR = 'Mariano Guerra'
     WEBSITE = 'www.emesene.org'
 
-    def __init__(self, session, cid, tab_label, members=None):
+    def __init__(self, session, cid, update_win, tab_label, members=None):
         '''constructor'''
         gtk.VBox.__init__(self)
-        gui.Conversation.__init__(self, session, cid, members)
+        gui.Conversation.__init__(self, session, cid, update_win, members)
         self.set_border_width(2)
 
         self.tab_label = tab_label
@@ -46,8 +46,13 @@ class Conversation(gtk.VBox, gui.Conversation):
         toolbar_handler = gui.base.ConversationToolbarHandler(self.session,
             dialog, gui.theme, self)
         self.toolbar = ConversationToolbar(toolbar_handler)
+        self.toolbar.set_property('can-focus', False)
         self.output = OutputText(self.session.config)
-        self.input = InputText(self.session.config, self._on_send_message)
+        self.output.set_size_request(-1, 30)
+        self.input = InputText(self.session.config, self._on_send_message,
+                self.cycle_history)
+        self.output.set_size_request(-1, 25)
+        self.input.set_size_request(-1, 25)
         self.info = ContactInfo()
         self.transfers_bar = TransfersBar(self.session)
 
@@ -60,8 +65,8 @@ class Conversation(gtk.VBox, gui.Conversation):
 
         frame_input.add(input_box)
 
-        self.panel.pack1(self.output, True, True)
-        self.panel.pack2(frame_input, True, True)
+        self.panel.pack1(self.output, True, False)
+        self.panel.pack2(frame_input, False, False)
 
         self.panel_signal_id = self.panel.connect_after('expose-event',
                 self.update_panel_position)
@@ -111,6 +116,8 @@ class Conversation(gtk.VBox, gui.Conversation):
             'b_show_info')
         self.session.signals.picture_change_succeed.subscribe(
             self.on_picture_change_succeed)
+        self.session.signals.contact_attr_changed.subscribe(
+            self.on_contact_attr_changed_succeed)
 
         self.session.signals.filetransfer_invitation.subscribe(
                 self.on_filetransfer_invitation)
@@ -125,7 +132,7 @@ class Conversation(gtk.VBox, gui.Conversation):
 
         if self.group_chat:
             self.rotate_started = True #to prevents more than one timeout_add
-            gobject.timeout_add(5000, self.rotate_picture)
+            gobject.timeout_add_seconds(5, self.rotate_picture)
 
     def _on_show_toolbar_changed(self, value):
         '''callback called when config.b_show_toolbar changes'''
@@ -178,9 +185,9 @@ class Conversation(gtk.VBox, gui.Conversation):
     def update_panel_position(self, *args):
         """update the panel position to be on the 80% of the height
         """
-        height = self.panel.get_position()
+        height = self.panel.get_allocation().height
         if height > 0:
-            self.panel.set_position(int(height * 1.8))
+            self.panel.set_position(int(height * 0.8))
             self.panel.disconnect(self.panel_signal_id)
             del self.panel_signal_id
 
@@ -214,13 +221,15 @@ class Conversation(gtk.VBox, gui.Conversation):
         self.tab_label.set_image(self.icon)
         self.tab_label.set_text(self.text)
 
+        self.update_window(self.text, self.icon, self.tab_index)
+
     def update_group_information(self):
         """
         update the information for a conversation with multiple users
         """
         if not self.rotate_started:
             self.rotate_started = True
-            gobject.timeout_add(5000, self.rotate_picture)
+            gobject.timeout_add_seconds(5, self.rotate_picture)
 
         #TODO add plus support for nick to the tab label!
         members_nick = []
@@ -311,11 +320,15 @@ class Conversation(gtk.VBox, gui.Conversation):
 
     def on_picture_change_succeed(self, account, path):
         '''callback called when the picture of an account is changed'''
-        # out account?
+        # our account?
         if account == self.session.account.account:
             self.avatar.set_from_file(path)
         elif account in self.members:
             self.his_avatar.set_from_file(path)
+
+    def on_contact_attr_changed_succeed(self, account, what, old,
+            do_notify=True):
+        self.update_tab()
 
     def on_filetransfer_invitation(self, transfer):
         self.transfers_bar.add(transfer)
@@ -325,3 +338,7 @@ class Conversation(gtk.VBox, gui.Conversation):
 
     def on_filetransfer_progress(self, transfer):
         self.transfers_bar.update(transfer)
+
+    def on_filetransfer_rejected(self, transfer):
+        self.transfers_bar.update(transfer)
+

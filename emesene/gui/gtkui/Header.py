@@ -2,24 +2,23 @@ import gtk
 import pango
 
 import utils
+import Renderers
 
 class Header(gtk.HBox):
     '''a widget used to display some information about the conversation'''
-    INFO_TPL = '<span>%s</span>\n'
-    INFO_TPL += '<span size="small">%s</span>'
+    INFO_TPL = '%s[$nl]'
+    INFO_TPL += '[$small]%s[$/small]'
 
     NAME = 'Header'
     DESCRIPTION = 'The widget that displays information about the conversation'
-    AUTHOR = 'Mariano Guerra'
+    AUTHOR = 'Mariano Guerra, Ivan25'
     WEBSITE = 'www.emesene.org'
 
     def __init__(self, session, members):
         '''constructor'''
         gtk.HBox.__init__(self)
         self.set_border_width(2)
-        self._information = gtk.Label('info')
-        self._information.set_ellipsize(pango.ELLIPSIZE_END)
-        self._information.set_alignment(0.0, 0.5)
+        self._information = Renderers.SmileyLabel()
 
         self.eventBox = gtk.EventBox()
         self.eventBox.set_visible_window(False)
@@ -32,11 +31,11 @@ class Header(gtk.HBox):
         self.members = members
 
         self.menu = gtk.Menu()
-        copynick = gtk.ImageMenuItem('Copy nick to clipboard')
+        copynick = gtk.ImageMenuItem(_('Copy nick to clipboard'))
         copynick.set_image(gtk.image_new_from_stock(gtk.STOCK_COPY, gtk.ICON_SIZE_MENU))
-        copypm = gtk.ImageMenuItem('Copy personal message to clipboard')
+        copypm = gtk.ImageMenuItem(_('Copy personal message to clipboard'))
         copypm.set_image(gtk.image_new_from_stock(gtk.STOCK_COPY, gtk.ICON_SIZE_MENU))
-        copymail = gtk.ImageMenuItem('Copy mail to clipboard')
+        copymail = gtk.ImageMenuItem(_('Copy mail to clipboard'))
         copymail.set_image(gtk.image_new_from_stock(gtk.STOCK_COPY, gtk.ICON_SIZE_MENU))
         self.menu.append(copynick)
         self.menu.append(copypm)
@@ -51,8 +50,8 @@ class Header(gtk.HBox):
     def _set_information(self, lines):
         '''set the text on the information, lines is a tuple of size 3 with 3
         strings that will be replaced on the template'''
-        self._information.set_markup(Header.INFO_TPL % lines)
-
+        self._information.set_markup(Renderers.msnplus_to_list(Header.INFO_TPL % lines))
+        
     def _get_information(self):
         '''return the text on the information'''
         return self._information.get_markup()

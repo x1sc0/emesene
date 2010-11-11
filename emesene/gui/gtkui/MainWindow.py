@@ -99,10 +99,8 @@ class MainWindow(gtk.VBox):
         dialog = extension.get_default('dialog')
         avatar_manager = extension.get_default('avatar manager')
 
-        am = avatar_manager(self.session)
-
         handler = gui.base.MenuHandler(self.session, dialog, self.contact_list,
-            am, self.on_disconnect, self.on_close)
+            self.on_disconnect, self.on_close)
 
         contact_handler = gui.base.ContactHandler(self.session, dialog,
             self.contact_list)
@@ -144,7 +142,7 @@ class MainWindow(gtk.VBox):
         '''callback for the contact-selected signal'''
         cid = time.time()
         self.on_new_conversation(cid, [contact.account], False)
-        
+
         #this calls the e3 Handler
         self.session.new_conversation(contact.account, cid)
 
@@ -204,7 +202,7 @@ class MainWindow(gtk.VBox):
         self.on_disconnect_cb()
 
     def _on_search_toggled(self, button):
-        '''called when the searhc button is toggled'''
+        '''called when the search button is toggled'''
         if button.get_active():
             self.entry.show()
             self.entry.grab_focus()

@@ -2,9 +2,9 @@
 
 #   This file is part of emesene.
 #
-#    Emesene is free software; you can redistribute it and/or modify
+#    emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation; either version 2 of the License, or
+#    the Free Software Foundation; either version 3 of the License, or
 #    (at your option) any later version.
 #
 #    emesene is distributed in the hope that it will be useful,
@@ -25,6 +25,9 @@ import gui
 import utils
 import extension
 import logging
+
+import Tooltips
+
 log = logging.getLogger('gtkui.ContactList')
 
 class ContactList(gui.ContactList, gtk.TreeView):
@@ -43,6 +46,8 @@ class ContactList(gui.ContactList, gtk.TreeView):
         gui.ContactList.__init__(self, session, dialog)
         gtk.TreeView.__init__(self)
 
+        self.online_group = None # added
+        self.online_group_iter = None # added
         self.no_group = None
         self.no_group_iter = None
         self.offline_group = None
@@ -51,13 +56,16 @@ class ContactList(gui.ContactList, gtk.TreeView):
         if self.session.config.d_weights is None:
             self.session.config.d_weights = {}
 
-        # the image (None for groups),
-        # the object (group or contact),
-        # the string to display and a boolean indicating if the pixbuf should
-        # be shown (False for groups, True for contacts), the status
-        # image, an int that is used to allow ordering specified by the user
-        # a boolean indicating special groups always False for contacts, True
-        # for special groups like "No group" and a boolean indicating if the contact is offline
+        # [0] the image (None for groups),
+        # [1] the object (group or contact),
+        # [2] the string to display
+        # [3] a boolean indicating if the pixbuf should
+        #     be shown (False for groups, True for contacts)
+        # [4] the status image
+        # [5] an int that is used to allow ordering specified by the user
+        # [6] a boolean indicating special groups always False for contacts, True
+        #     for special groups like "No group"
+        # [7] a boolean indicating if the contact is offline
         self._model = gtk.TreeStore(gtk.Image, object, str, bool,
             gtk.gdk.Pixbuf, int, bool, bool)
         self.model = self._model.filter_new(root=None)
@@ -67,6 +75,10 @@ class ContactList(gui.ContactList, gtk.TreeView):
         self._model.set_sort_column_id(1, gtk.SORT_ASCENDING)
 
         self.set_model(self.model)
+
+        self.tooltips = Tooltips.Tooltips()
+        self.connect('motion-notify-event', self.tooltips.on_motion)
+        self.connect('leave-notify-event', self.tooltips.on_leave)
 
         crt = extension.get_and_instantiate('nick renderer')
         crt.set_property('ellipsize', pango.ELLIPSIZE_END)
@@ -96,8 +108,19 @@ class ContactList(gui.ContactList, gtk.TreeView):
         self.set_search_column(2)
         self.set_headers_visible(False)
 
+
         self.connect('row-activated', self._on_row_activated)
         self.connect('button-release-event' , self._on_button_press_event)
+        self.connect('row-expanded' , self._on_expand)
+        self.connect('row-collapsed' , self._on_collapse)
+
+    def _on_expand(self, treeview, iter_, path):
+        group = self.model[path][1]
+        self.on_group_expanded(group)
+
+    def _on_collapse(self, treeview, iter_, path):
+        group = self.model[path][1]
+        self.on_group_collapsed(group)
 
     def _get_contact_pixbuf_or_default(self, contact):
         '''try to return a pixbuf of the user picture or the default
@@ -139,6 +162,9 @@ class ContactList(gui.ContactList, gtk.TreeView):
             if not self.show_empty_groups:
                 # TODO: check this when we start translating the app
                 if special and obj.name == "Offline":
+                    return True
+
+                if special and obj.name == "Online":
                     return True
 
                 # get a list of contact objects from a list of accounts
@@ -286,8 +312,6 @@ class ContactList(gui.ContactList, gtk.TreeView):
 
     def add_group(self, group, special=False):
         '''add a group to the contact list'''
-        if self.order_by_status:
-            return None
 
         try:
             weight = int(self.session.config.d_weights.get(group.identifier, 0))
@@ -306,7 +330,9 @@ class ContactList(gui.ContactList, gtk.TreeView):
                     log.debug('Trying to add an existing group! ' + obj.name)
                     return row.iter
 
-        return self._model.append(None, group_data)
+        itr = self._model.append(None, group_data)
+
+        return itr
 
     def remove_group(self, group):
         '''remove a group from the contact list'''
@@ -325,6 +351,7 @@ class ContactList(gui.ContactList, gtk.TreeView):
 
         self.session.config.d_weights[contact.account] = weight
         offline = contact.status == e3.status.OFFLINE
+        is_online  = not offline
 
         contact_data = (self._get_contact_pixbuf_or_default(contact), 
             contact, self.format_nick(contact), True,
@@ -333,18 +360,26 @@ class ContactList(gui.ContactList, gtk.TreeView):
 
         # if group_offline is set and the contact is offline then put it on the
         # special offline group
-        if not self.order_by_status and self.group_offline\
-                and contact.status == e3.status.OFFLINE:
-            if self.offline_group:
-                self.offline_group.contacts.append(contact.account)
-                self.update_offline_group()
-                return self._model.append(self.offline_group_iter, contact_data)
-            else:
+        if self.group_offline and offline:
+            if not self.offline_group:
                 self.offline_group = e3.Group("Offline")
                 self.offline_group_iter = self.add_group(self.offline_group, True)
-                self.offline_group.contacts.append(contact.account)
-                self.update_offline_group()
-                return self._model.append(self.offline_group_iter, contact_data)
+
+            self.offline_group.contacts.append(contact.account)
+            self.update_offline_group()
+            return self._model.append(self.offline_group_iter, contact_data)
+
+        # if we are in order by status mode and contact is online,
+        # we add online contacts to their online group :)
+        if self.order_by_status and is_online:
+            if not self.online_group:
+                self.online_group = e3.Group("Online") # FIXME: Check this when translate.
+                self.online_group_iter = self.add_group(self.online_group, True)
+
+            self.online_group.contacts.append(contact.account)
+            self.update_online_group()
+            return self._model.append(self.online_group_iter, contact_data)
+
 
         # if it has no group and we are in order by group then add it to the
         # special group "No group"
@@ -400,7 +435,9 @@ class ContactList(gui.ContactList, gtk.TreeView):
                 return return_iter
         else:
             self.add_group(group)
-            return self.add_contact(contact, group)
+            result = self.add_contact(contact, group)
+            self.update_group(group)
+            return result
 
     def remove_contact(self, contact, group=None):
         '''remove a contact from the specified group, if group is None
@@ -415,12 +452,17 @@ class ContactList(gui.ContactList, gtk.TreeView):
                         con = contact_row[1]
                         # if we find it, we remove it
                         if con.account == contact.account:
+                            # we remove it from tree and from group.
                             del self._model[contact_row.iter]
+                            if group.contacts.count(contact.account) > 0:
+                                group.contacts.remove(contact.account)
                             self.update_group(obj)
 
                 # if it's a contact without group (at the root)
                 elif type(obj) == e3.Contact and obj.account == contact.account:
+                    # TODO: Is removing only the tree object?
                     del self._model[row.iter]
+                    del obj # CHECK!!!!!
 
             return
 
@@ -432,10 +474,15 @@ class ContactList(gui.ContactList, gtk.TreeView):
                 # go through all the contacts
                 for contact_row in row.iterchildren():
                     con = contact_row[1]
-                    # if we find it, we remove it
+                    # if we find it, we remove it, from group and model
                     if con.account == contact.account:
                         del self._model[contact_row.iter]
+                        if group.contacts.count(contact.account) > 0:
+                            group.contacts.remove(contact.account)
                         self.update_group(group)
+
+
+
 
     def clear(self):
         '''clear the contact list, return True if the list was cleared
@@ -444,6 +491,8 @@ class ContactList(gui.ContactList, gtk.TreeView):
         if not self._model:
             return False
 
+        self.online_group = None
+        self.online_group_iter = None
         self.no_group = None
         self.no_group_iter = None
         self.offline_group = None
@@ -453,7 +502,7 @@ class ContactList(gui.ContactList, gtk.TreeView):
 
         # this is the best place to put this code without putting gtk code
         # on gui.ContactList
-        self.exp_column.set_visible(not self.order_by_status)
+        self.exp_column.set_visible(True)
         return True
 
     def update_contact(self, contact):
@@ -465,6 +514,7 @@ class ContactList(gui.ContactList, gtk.TreeView):
 
         self.session.config.d_weights[contact.account] = weight
         offline = contact.status == e3.status.OFFLINE
+        online  = not offline
 
         contact_data = (self._get_contact_pixbuf_or_default(contact),
             contact, self.format_nick(contact), True,
@@ -473,6 +523,7 @@ class ContactList(gui.ContactList, gtk.TreeView):
 
         found = False
 
+        group_found = None
         for row in self._model:
             obj = row[1]
             if type(obj) == e3.Group:
@@ -480,17 +531,40 @@ class ContactList(gui.ContactList, gtk.TreeView):
                     con = contact_row[1]
                     if con.account == contact.account:
                         found = True
+                        group_found = obj
                         self._model[contact_row.iter] = contact_data
                         self.update_group(obj)
             elif type(obj) == e3.Contact and obj.account == contact.account:
                 found = True
                 self._model[row.iter] = contact_data
 
+        # if we are in order by status, the contact was found and now is offline/online
+        # delete contact from offline/online group and add to the oposite.
+        if self.order_by_status and found:
+            # y todavia no estoy en el grupo.
+            if offline and group_found != self.offline_group:
+                self.remove_contact(contact, self.online_group)
+                self.add_contact(contact, self.offline_group)
+
+            if online and group_found != self.online_group:
+                self.remove_contact(contact, self.offline_group)
+                self.add_contact(contact, self.online_group)
+
+
     def update_no_group(self):
         '''update the special "No group" group'''
+        if self.no_group_iter is None:
+            return
+
         group_data = (None, self.no_group, self.format_group(self.no_group), False, None,
             0, True, False)
         self._model[self.no_group_iter] = group_data
+
+
+    def update_online_group(self):
+        '''update the special "Online" group '''
+        group_data = (None, self.online_group, self.format_group(self.online_group), False, None, 0, True, False)
+        self._model[self.online_group_iter] = group_data
 
     def update_offline_group(self):
         '''update the special "Offline" group'''
@@ -510,21 +584,21 @@ class ContactList(gui.ContactList, gtk.TreeView):
         for row in self._model:
             obj = row[1]
             if type(obj) == e3.Group and obj.identifier == group.identifier:
+                if group.name in self.group_state:
+                    state = self.group_state[group.name]
+                    childpath = self._model.get_path(row.iter)
+                    path = self.model.convert_child_path_to_path(childpath)
+
+                    if path:
+                        if state:
+                            self.expand_row(path, False)
+                        else:
+                            self.collapse_row(path)
+
                 group_data = (None, group, self.format_group(group), False, None,
                     weight, row[6], False)
                 self._model[row.iter] = group_data
 
-    def set_group_state(self, group, state):
-        '''expand group id state is True, collapse it if False'''
-        for row in self._model:
-            obj = row[1]
-            if type(obj) == e3.Group and obj.name == group.name:
-                path = self._model.get_path()
-
-                if state:
-                    self.expand_row(path, False)
-                else:
-                    self.collapse_row(path)
 
     def format_nick(self, contact):
         '''replace the appearance of the template vars using the values of
@@ -541,19 +615,40 @@ class ContactList(gui.ContactList, gtk.TreeView):
         nick = gobject.markup_escape_text(contact.nick)
         display_name = gobject.markup_escape_text(contact.display_name)
 
+        #TODO: fix those "no-more-color" with msgplus codes, '&#173;'?
+        def fix_plus(text):
+            escaped = self.escape_tags(text)
+            pos = escaped.find("\xc2\xb7")
+            tail = ""
+            irc = "#&@'"
+            flag = False
+            while pos != -1:
+                try:
+                    char = escaped[pos+2]
+                    if char in irc and escaped.count("\xc2\xb7"+char)%2 != 0:
+                        tail = "\xc2\xb7" + char + tail
+                        irc = irc.replace(char,"")
+                    flag = flag or char == "$"
+                except:
+                    pos = pos+1
+                pos = escaped.find("\xc2\xb7",pos+2)
+            if flag:
+                tail += "no-more-color"
+            return escaped + tail
+
         template = self.nick_template
         template = template.replace('[$NL]', '\n')
         template = template.replace('[$NICK]',
-                self.escape_tags(nick))
+                fix_plus(nick))
         template = template.replace('[$ACCOUNT]',
                 self.escape_tags(contact.account))
         template = template.replace('[$MESSAGE]',
-                self.escape_tags(message))
+                fix_plus(message))
         template = template.replace('[$STATUS]',
                 self.escape_tags(e3.status.STATUS[contact.status]))
         template = template.replace('[$DISPLAY_NAME]',
-                self.escape_tags(display_name))
-
+                fix_plus(display_name))
+        
         blocked_text = ''
 
         if contact.blocked:
@@ -577,7 +672,7 @@ class ContactList(gui.ContactList, gtk.TreeView):
         (online, total) = self.contacts.get_online_total_count(contacts)
         template = self.group_template
 
-        if group == self.offline_group:
+        if group == self.offline_group or group == self.online_group:
             template = template.replace('[$ONLINE_COUNT]', str(total))
         else:
             template = template.replace('[$ONLINE_COUNT]', str(online))

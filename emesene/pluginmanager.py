@@ -5,7 +5,7 @@
 
 #   This file is part of emesene.
 #
-#    Emesene is free software; you can redistribute it and/or modify
+#    emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation; either version 3 of the License, or
 #    (at your option) any later version.
@@ -24,6 +24,8 @@ import sys
 import logging
 
 log = logging.getLogger('pluginmanager')
+
+BLACKLIST = ["lint.py", "__init__.py"]
 
 class PackageResource:
     '''Handle various files that could be put in the package'''
@@ -151,7 +153,8 @@ class PluginManager:
         for filename in os.listdir(dir_):
             path = os.path.join(dir_, filename)
             if filename.startswith(".") or \
-               not (os.path.isdir(path) or filename.endswith('.py')):
+               not (os.path.isdir(path) or filename.endswith('.py')) or \
+               filename in BLACKLIST:
                 continue
 
             try:

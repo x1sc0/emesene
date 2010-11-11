@@ -2,10 +2,12 @@
 import re
 import os
 import time
-
+import datetime
 import xml.sax.saxutils
 
 import parsers
+import gui
+import MarkupParser
 
 class AdiumTheme(object):
     '''a class that contains information of a adium theme
@@ -52,7 +54,7 @@ class AdiumTheme(object):
         self.outgoing_next = read_file(self.outgoing_path,
                 'NextContent.html')
 
-    def format_incoming(self, msg):
+    def format_incoming(self, msg, style=None, cedict={}, cedir=None):
         '''return a string containing the template for the incoming message
         with the vars replaced
         '''
@@ -70,9 +72,9 @@ class AdiumTheme(object):
         else:
             template = self.incoming
 
-        return self.replace(template, msg)
+        return self.replace(template, msg, style, cedict, cedir)
 
-    def format_outgoing(self, msg):
+    def format_outgoing(self, msg, style=None, cedict={}, cedir=None):
         '''return a string containing the template for the outgoing message
         with the vars replaced
         '''
@@ -96,11 +98,18 @@ class AdiumTheme(object):
         else:
             template = self.outgoing
 
-        return self.replace(template, msg)
+        return self.replace(template, msg, style, cedict, cedir)
 
-    def replace(self, template, msg):
+    def replace(self, template, msg, style=None, cedict={}, cedir=None):
         '''replace the variables on template for the values on msg
         '''
+
+        msgtext = MarkupParser.replace_emotes(escape(msg.message), cedict, cedir, msg.sender)
+        msgtext = MarkupParser.urlify(msgtext)
+
+        if style is not None:
+            msgtext = style_message(msgtext, style)
+
         template = template.replace('%sender%', escape(msg.alias))
         template = template.replace('%senderScreenName%', escape(msg.sender))
         template = template.replace('%senderDisplayName%',
@@ -110,9 +119,15 @@ class AdiumTheme(object):
             escape(msg.status_path))
         template = template.replace('%messageDirection%',
             escape(msg.direction))
-        template = template.replace('%message%', escape(msg.message))
-        template = template.replace('%time%',
-            escape(time.strftime(self.timefmt)))
+        template = template.replace('%message%', msgtext)
+
+        if msg.timestamp is None:
+            template = template.replace('%time%',
+                escape(time.strftime(self.timefmt)))
+        else:
+            template = template.replace('%time%', 
+                escape(msg.timestamp.strftime('%x %X')))
+
         template = re.sub("%time{(.*?)}%", replace_time, template)
         template = template.replace('%shortTime%',
             escape(time.strftime("%H:%M")))
@@ -187,13 +202,18 @@ def read_file(*args):
     return None
 
 __dic = {
-    '\"'    :    '&quot;',
-    '\''    :    '&apos;'
+    '\"': '&quot;',
+    '\'': '&apos;',
+    '\\': '\\\\',
+    '\r\n': '<br>', #windows
+    '\r': '<br>', #osx
+    '\n': '<br>' #linux
 }
 
 __dic_inv = {
-    '&quot;'    :'\"',
-    '&apos;'    :'\''
+    '&quot;' :'\"',
+    '&apos;' :'\'',
+    '<br>':    '\n'
 }
 
 def escape(string_):
@@ -207,4 +227,8 @@ def unescape(string_):
 def replace_time(match):
     '''replace the format of the time to it's value'''
     return time.strftime(match.groups()[0])
+
+def style_message(msgtext, style):
+    '''add html markupt to msgtext to format the style of the message'''
+    return '<span style="%s">%s</span>' % (style.to_css(), msgtext)
 

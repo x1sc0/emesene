@@ -22,10 +22,9 @@ class UserPanel(gtk.VBox):
         self.session = session
         self.config_dir = session.config_dir
         self._enabled = True
-        
-        Avatar = extension.get_default('avatar')
-        AvatarManager = extension.get_default('avatar manager')
 
+        Avatar = extension.get_default('avatar')
+        
         self.avatar = Avatar(cellDimention=48)
 
         self.avatarBox = gtk.EventBox()
@@ -35,7 +34,6 @@ class UserPanel(gtk.VBox):
         self.avatarBox.set_tooltip_text(_('Click here to set your avatar'))
 
         self.avatar_path = self.config_dir.get_path("last_avatar")
-        self.avatar_manager = AvatarManager(self.session)
 
         if not self.session.config_dir.file_readable(self.avatar_path):
             path = gui.theme.user
@@ -52,12 +50,12 @@ class UserPanel(gtk.VBox):
         self.search.set_relief(gtk.RELIEF_NONE)
 
         self.message = TextField.TextField(session.contacts.me.message,
-            '<span style="italic">&lt;Click here to set message&gt;</span>',
+            '<span style="italic">' + _("Click here to set a message") + '.</span>',
             True)
         self.toolbar = gtk.HBox()
 
         hbox = gtk.HBox()
-        hbox.set_border_width(2)
+        hbox.set_border_width(1)
         hbox.pack_start(self.avatarBox, False)
 
         vbox = gtk.VBox()
@@ -152,30 +150,13 @@ class UserPanel(gtk.VBox):
         '''method called when information about our profile is obtained
         '''
         self.nick.text = nick
-        self.message.text = message
+        if message is not '':
+            self.message.text = message
 
     def on_avatar_click(self, widget, data):
         '''method called when user click on his avatar
         '''
-        def set_picture_cb(response, filename):
-            '''callback for the avatar chooser'''
-            if _av_chooser is not None:
-                _av_chooser.stop_and_clear()
-            if response == gui.stock.ACCEPT:
-                self.avatar_manager.set_as_avatar(filename)
-
-        # Directory for user's avatars
-        path_dir = self.avatar_manager.get_avatars_dir()                   
-
-        # Directory for contact's cached avatars
-        cached_avatar_dir = self.avatar_manager.get_cached_avatars_dir()
-                   
-        # Directories for System Avatars
-        faces_paths = self.avatar_manager.get_system_avatars_dirs()
-
-        _av_chooser = extension.get_default('avatar chooser')(set_picture_cb,
-                                                self.avatar_path, path_dir,
-                                                cached_avatar_dir, faces_paths,
-                                                self.avatar_manager)
-        _av_chooser.show()
+        av_chooser = extension.get_default('avatar chooser')(self.session)
+        av_chooser.set_modal(True)
+        av_chooser.show()
 

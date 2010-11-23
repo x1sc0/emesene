@@ -81,9 +81,6 @@ class MainWindow(gtk.VBox):
         scroll.add(self.contact_list)
         scroll.show_all()
 
-        if self.session.config.b_show_userpanel:
-            self.panel.hide()
-
         self.session.config.subscribe(self._on_show_userpanel_changed,
             'b_show_userpanel')
 
@@ -122,7 +119,10 @@ class MainWindow(gtk.VBox):
         '''show the widget'''
         gtk.VBox.show(self)
         self.menu.show_all()
-        self.panel.show()
+
+        if self.session.config.b_show_userpanel:
+            self.panel.show()
+
         self.contact_list.show()
         self.below_menu.show()
         self.below_panel.show()

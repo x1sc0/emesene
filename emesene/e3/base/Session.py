@@ -98,10 +98,6 @@ class Session(object):
 
     def load_config(self):
         '''load the config of the session'''
-        # load the global configuration
-        self.config.load(os.path.join(self.config_dir.default_base_dir,
-            'config'))
-        # load the account configuration
         self.config.load(self.config_dir.get_path('config'))
 
     def new_conversation(self, account, cid):

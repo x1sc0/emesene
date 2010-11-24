@@ -1,3 +1,21 @@
+# -*- coding: utf-8 -*-
+
+#    This file is part of emesene.
+#
+#    emesene is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    emesene is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with emesene; if not, write to the Free Software
+#    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
 import gtk
 import webbrowser
 
@@ -383,6 +401,7 @@ class Interface(BaseTable):
         self.append_markup('<b>'+_('Conversation window:')+'</b>')
         self.session.config.get_or_set('b_avatar_on_left', False)
         self.session.config.get_or_set('b_toolbar_small', False)
+        self.session.config.get_or_set('b_show_avatar_in_taskbar', True)
         self.append_check(_('Start minimized/iconified'), 'session.config.b_conv_minimized')
         self.append_check(_('Show emoticons'), 'session.config.b_show_emoticons')
         self.append_check(_('Show conversation header'),
@@ -399,6 +418,8 @@ class Interface(BaseTable):
             'session.config.b_allow_auto_scroll')
         self.append_check(_('Enable spell check if available (requires %s)') % 'python-gtkspell',
             'session.config.b_enable_spell_check')
+        self.append_check(_('Show avatars in taskbar instead of status icons'), 
+            'session.config.b_show_avatar_in_taskbar')
 
         self.append_range(_('Contact list avatar size'),
             'session.config.i_avatar_size', 18, 64)

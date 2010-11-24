@@ -1,3 +1,21 @@
+# -*- coding: utf-8 -*-
+
+#    This file is part of emesene.
+#
+#    emesene is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    emesene is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with emesene; if not, write to the Free Software
+#    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
 import os
 import time
 import webbrowser
@@ -94,6 +112,10 @@ class OptionsHandler(object):
     def on_show_blocked_toggled(self, active):
         '''called when the show blocked item is toggled'''
         self.contact_list.show_blocked = active
+
+    def on_order_by_name_toggled(self, active):
+        '''called when the sort by name item is toggled'''
+        self.contact_list.order_by_name = active
 
     def on_preferences_selected(self):
         '''called when the preference button is selected'''
@@ -375,7 +397,19 @@ class ConversationToolbarHandler(object):
 
     def on_ublock_selected(self):
         '''called when block/unblock button is selected'''
-        self.conversation.on_block_user()        
+        self.conversation.on_block_user()
+
+    def on_invite_video_call_selected(self):
+        '''called when the user is requesting a video-only call'''
+        self.conversation.on_video_call()
+
+    def on_invite_voice_call_selected(self):
+        '''called when the user is requesting an audio-only call'''
+        self.conversation.on_voice_call()
+
+    def on_invite_av_call_selected(self):
+        '''called when the user is requesting an audio-video call'''
+        self.conversation.on_av_call()
 
 class TrayIconHandler(FileHandler):
     """

@@ -137,6 +137,8 @@ class Worker(e3.base.Worker, papyon.Client):
         nick = self.profile.display_name
         self.session.contacts.me.picture = self.session.config_dir.get_path("last_avatar")
         self._set_status(presence)
+        self.profile.client_capabilities.has_webcam = True
+        self.profile.client_capabilities.supports_rtc_video = True
         # initialize caches
         self.caches = e3.cache.CacheManager(self.session.config_dir.base_dir)
         self.my_avatars = self.caches.get_avatar_cache(self.session.account.account)
@@ -178,6 +180,15 @@ class Worker(e3.base.Worker, papyon.Client):
             self._add_group(group)
 
         for contact in abook.contacts:
+            if (papyon.profile.Membership.PENDING & contact.memberships):
+                # Add to the pending contacts
+                tmp_cont = e3.base.Contact(contact.account, contact.id, \
+                            contact.display_name, contact.personal_message, \
+                            STATUS_PAPY_TO_E3[contact.presence], '', \
+                            (papyon.profile.Membership.BLOCK & contact.memberships))
+                self.session.contacts.pending[contact.account] = tmp_cont
+                continue
+
             if not (papyon.profile.Membership.FORWARD & contact.memberships):
                 # This skips contacts that are not in our contact list
                 # but are still in the Live Address Book
@@ -264,13 +275,24 @@ class Worker(e3.base.Worker, papyon.Client):
         self.calls[call] = ca
         self.rcalls[ca] = call
         call_handler = CallEvent(call, self)
+        session_handler = papyon.media.conference.MediaSessionHandler(call.media_session)
         call.ring()
-        # leave the accept stuff to the call event handler
-        # because codecs aren't ready yet
+        call.accept()
         
         self.session.add_event(Event.EVENT_CALL_INVITATION, ca)
 
     def _on_invite_file_transfer(self, papysession):
+        ''' handle file transfer invites '''
+        account = papysession.peer.account
+
+        if account in self.conversations:
+            cid = self.conversations[account]
+        else:
+            cid = time.time()
+            self._handle_action_new_conversation(account, cid)
+            self.session.add_event(Event.EVENT_CONV_FIRST_ACTION, cid,
+                [account])
+
         tr = e3.base.FileTransfer(papysession, papysession.filename, \
             papysession.size, papysession.preview, sender=papysession.peer)
         self.filetransfers[papysession] = tr
@@ -281,7 +303,7 @@ class Worker(e3.base.Worker, papyon.Client):
         papysession.connect("completed", self.papy_ft_completed)
         papysession.connect("rejected", self.papy_ft_rejected)
 
-        self.session.add_event(Event.EVENT_FILETRANSFER_INVITATION, tr)
+        self.session.add_event(Event.EVENT_FILETRANSFER_INVITATION, tr, cid)
 
     def papy_ft_accepted(self, ftsession):
         tr = self.filetransfers[ftsession]
@@ -341,12 +363,12 @@ class Worker(e3.base.Worker, papyon.Client):
     def _on_call_incoming(self, papycallevent):
         """Called once the incoming call is ready."""
         log.info("New call incoming")
-        if papycallevent._call.media_session.prepared:
-            papycallevent._call.accept()
-            log.info("Accepting the new call")
-        else:
-            papycallevent._call.ring()
-            log.info("Ringing...session not ready")
+        #if papycallevent._call.media_session.prepared:
+        #    papycallevent._call.accept()
+        #    log.info("Accepting the new call")
+        #else:
+        #    papycallevent._call.ring()
+        #    log.info("Ringing...session not ready")
         
     def _on_call_ringing(self, papycallevent):
         log.info("Ringing")
@@ -385,6 +407,8 @@ class Worker(e3.base.Worker, papyon.Client):
 
         msgobj = e3.base.Message(e3.base.Message.TYPE_FLNMSG, \
             msg, account, None, flnmsg.date)
+        # override font size!
+        msgobj.style.size = self.session.config.i_font_size
         self.session.add_event(\
             Event.EVENT_CONV_MESSAGE, cid, account, msgobj, {})
         e3.Logger.log_message(self.session, None, msgobj, False)
@@ -424,7 +448,7 @@ class Worker(e3.base.Worker, papyon.Client):
 
         msgobj = e3.base.Message(e3.base.Message.TYPE_MESSAGE, \
             papymessage.content, account, \
-            formatting_papy_to_e3(papymessage.formatting))
+            formatting_papy_to_e3(papymessage.formatting, self.session.config.i_font_size))
         # convert papyon msnobjects to a simple dict {shortcut:identifier}
         received_custom_emoticons = {}
 
@@ -519,6 +543,16 @@ class Worker(e3.base.Worker, papyon.Client):
                                    cid, account)
 
     # contact changes handlers
+    def _on_contact_membership_changed(self, papycontact):
+        log.info("Contact membership changed: %s" % papycontact)
+        contact = self.session.contacts.contacts.get(papycontact.account, None)
+        if not contact:
+            self._add_contact(papycontact)
+            self.session.add_event(Event.EVENT_CONTACT_ADD_SUCCEED, papycontact.account)
+        else:
+            self.session.add_event(Event.EVENT_CONTACT_ATTR_CHANGED, 
+                                    papycontact.account, 'membership', None)
+
     def _on_contact_status_changed(self, papycontact):
         status_ = STATUS_PAPY_TO_E3[papycontact.presence]
         contact = self.session.contacts.contacts.get(papycontact.account, None)
@@ -626,7 +660,17 @@ class Worker(e3.base.Worker, papyon.Client):
                     (download_ok, download_failed), peer=contact)
 
     # address book events
-    def _on_addressbook_messenger_contact_added(contact):
+    def _on_addressbook_contact_pending(self, contact):
+        log.debug("contact pending: %s" % contact)
+        # Add to the pending contacts
+        tmp_cont = e3.base.Contact(contact.account, contact.id, \
+            contact.display_name, contact.personal_message, \
+            STATUS_PAPY_TO_E3[contact.presence], '', \
+            (papyon.profile.Membership.BLOCK & contact.memberships))
+        self.session.contacts.pending[contact.account] = tmp_cont
+        self.session.add_event(Event.EVENT_CONTACT_ADDED_YOU)
+
+    def _on_addressbook_messenger_contact_added(self, contact):
         self._add_contact(contact)
         self.session.add_event(Event.EVENT_CONTACT_ADD_SUCCEED, contact.account)
 
@@ -1057,7 +1101,7 @@ class Worker(e3.base.Worker, papyon.Client):
         papysession.connect("progressed", self.papy_ft_progressed)
         papysession.connect("completed", self.papy_ft_completed)
 
-        self.session.add_event(Event.EVENT_FILETRANSFER_INVITATION, tr)
+        self.session.add_event(Event.EVENT_FILETRANSFER_INVITATION, tr, cid)
     
     def _handle_action_ft_accept(self, t):
         self.rfiletransfers[t].accept()
@@ -1075,16 +1119,35 @@ class Worker(e3.base.Worker, papyon.Client):
         del self.rfiletransfers[t]
 
     # call handlers
-    def _handle_action_call_invite(self, cid, account):
+    def _handle_action_call_invite(self, cid, account, a_v_both):
         papycontact = self.address_book.contacts.search_by('account', account)[0]
-        papysession = self.call_manager.create_call(peer)
+        papysession = self.call_manager.create_call(papycontact)
+        call_handler = CallEvent(papysession, self)
+        session_handler = papyon.media.conference.MediaSessionHandler(papysession.media_session)
+        log.info("Call %s - %s" % (account, a_v_both))
+        if a_v_both == 0: # see gui.base.Conversation.py 0=V,1=A,2=AV
+            stream = papysession.media_session.create_stream("video",
+                         papyon.media.constants.MediaStreamDirection.BOTH, True)
+            papysession.media_session.add_stream(stream)
+        elif a_v_both == 1:
+            stream = papysession.media_session.create_stream("audio",
+                         papyon.media.constants.MediaStreamDirection.BOTH, True)
+            papysession.media_session.add_stream(stream)
+        elif a_v_both == 2:
+            stream = papysession.media_session.create_stream("video",
+                         papyon.media.constants.MediaStreamDirection.BOTH, True)
+            stream = papysession.media_session.create_stream("audio",
+                         papyon.media.constants.MediaStreamDirection.BOTH, True)
+            papysession.media_session.add_stream(stream)
+            papysession.media_session.add_stream(stream)
 
-        ca = e3.base.Call(papysession, papycontact.account)
+        ca = e3.base.Call(papysession, papycontact.account, None, None, None)
         self.calls[papysession] = ca
         self.rcalls[ca] = papysession
-        
+
+        papysession.invite()
         self.session.add_event(Event.EVENT_CALL_INVITATION, ca)
-    
+
     def _handle_action_call_accept(self, c):
         self.rcalls[c].accept()
 

@@ -1,3 +1,21 @@
+# -*- coding: utf-8 -*-
+
+#    This file is part of emesene.
+#
+#    emesene is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    emesene is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with emesene; if not, write to the Free Software
+#    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
 import gtk
 import gobject
 
@@ -26,6 +44,8 @@ class Conversation(gtk.VBox, gui.Conversation):
         self._toolbar_visible = session.config.b_show_toolbar
 
         self.panel = gtk.VPaned()
+
+        self.show_avatar_in_taskbar = self.session.config.get_or_set('b_show_avatar_in_taskbar', True)
 
         Header = extension.get_default('conversation header')
         OutputText = extension.get_default('conversation output')
@@ -242,7 +262,10 @@ class Conversation(gtk.VBox, gui.Conversation):
         self.tab_label.set_image(self.icon)
         self.tab_label.set_text(self.text)
 
-        self.update_window(self.text, self.icon, self.tab_index)
+        if self.show_avatar_in_taskbar:
+            self.update_window(self.text, self.his_avatar.filename, self.tab_index)
+        else:
+            self.update_window(self.text, self.icon, self.tab_index)
 
     def update_group_information(self):
         """
@@ -353,9 +376,10 @@ class Conversation(gtk.VBox, gui.Conversation):
         if account in self.members and what in ('status', 'nick'):
             self.update_tab()
 
-    def on_filetransfer_invitation(self, transfer):
+    def on_filetransfer_invitation(self, transfer, cid):
         ''' called when a new file transfer is issued '''
-        self.transfers_bar.add(transfer)
+        if cid == self.cid:
+            self.transfers_bar.add(transfer)
 
     def on_filetransfer_accepted(self, transfer):
         ''' called when the file transfer is accepted '''
@@ -363,13 +387,16 @@ class Conversation(gtk.VBox, gui.Conversation):
 
     def on_filetransfer_progress(self, transfer):
         ''' called every chunk received '''
-        self.transfers_bar.update(transfer)
+        if transfer in self.transfers_bar.transfers:
+            self.transfers_bar.update(transfer)
 
     def on_filetransfer_rejected(self, transfer):
         ''' called when a file transfer is rejected '''
-        self.transfers_bar.update(transfer)
+        if transfer in self.transfers_bar.transfers:
+            self.transfers_bar.update(transfer)
 
     def on_filetransfer_completed(self, transfer):
         ''' called when a file transfer is completed '''
-        self.transfers_bar.finished(transfer)
+        if transfer in self.transfers_bar.transfers:
+            self.transfers_bar.finished(transfer)
 

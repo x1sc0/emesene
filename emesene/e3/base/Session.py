@@ -98,7 +98,7 @@ class Session(object):
 
     def load_config(self):
         '''load the config of the session'''
-        self.config.load(self.config_dir.get_path('config'))
+        return self.config.load(self.config_dir.get_path('config'))
 
     def new_conversation(self, account, cid):
         '''start a new conversation with account'''

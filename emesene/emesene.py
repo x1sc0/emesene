@@ -341,8 +341,6 @@ class Controller(object):
 
         last_avatar_path = self.session.config_dir.get_path("last_avatar")
 
-        self.session.load_config()
-
         image_name = self.session.config.get_or_set('image_theme', 'default')
         emote_name = self.session.config.get_or_set('emote_theme', 'default')
         sound_name = self.session.config.get_or_set('sound_theme', 'default')
@@ -427,6 +425,17 @@ class Controller(object):
         self._save_login_dimensions()
         self._set_location(self.window)
         self.cur_service = [host, port]
+
+        self._new_session()
+
+        self.timeout_id = glib.timeout_add(500,
+                self.session.signals._handle_events)
+        self.session.login(account.account, account.password, account.status,
+            proxy, host, port, use_http)
+        
+        if not self.session.load_config():
+            self._set_default_values()
+
         if not on_reconnect:
             self.on_preferences_changed(use_http, proxy, session_id,
                     self.config.service)
@@ -438,14 +447,6 @@ class Controller(object):
             self.window.show()
         else:
             self.window.content.clear_connect()
-
-        self._new_session()
-        self._set_default_values()
-
-        self.timeout_id = glib.timeout_add(500,
-                self.session.signals._handle_events)
-        self.session.login(account.account, account.password, account.status,
-            proxy, host, port, use_http)
 
     def on_cancel_login(self):
         '''

@@ -53,7 +53,7 @@ class Config(BaseConfig.Config):
         clear is set to True'''
         if not os.path.isfile(path):
             log.warning("couldn't load config: " + path + " (no file)")
-            return
+            return False
 
         handle = file(path)
 
@@ -64,10 +64,12 @@ class Config(BaseConfig.Config):
             content = json.load(handle)
         except ValueError:
             log.warning("couldn't load config: " + path + " (invalid format)")
-            return
+            return False
 
         for (name, value) in content:
             setattr(self, name, value)
+
+        return True
 
     def save(self, path):
         '''save to a config file'''

@@ -374,6 +374,30 @@ class Controller(object):
 
         window.set_location(width, height, posx, posy)
 
+    def _set_default_values(self):
+        '''set default values if not already set'''
+        self.session.config.get_or_set('b_conv_minimized', True)
+        self.session.config.get_or_set('b_mute_sounds', False)
+        self.session.config.get_or_set('b_play_send', True)
+        self.session.config.get_or_set('b_play_nudge', True)
+        self.session.config.get_or_set('b_play_first_send', True)
+        self.session.config.get_or_set('b_play_type', True)
+        self.session.config.get_or_set('b_play_contact_online', True)
+        self.session.config.get_or_set('b_play_contact_offline', True)
+        self.session.config.get_or_set('b_notify_contact_online', True)
+        self.session.config.get_or_set('b_notify_contact_offline', True)
+        self.session.config.get_or_set('b_notify_receive_message', True)
+        self.session.config.get_or_set('b_show_userpanel', True)
+        self.session.config.get_or_set('b_show_emoticons', True)
+        self.session.config.get_or_set('b_show_header', True)
+        self.session.config.get_or_set('b_show_info', True)
+        self.session.config.get_or_set('b_show_toolbar', True)
+        self.session.config.get_or_set('b_allow_auto_scroll', True)
+        self.session.config.get_or_set('adium_theme',
+                'renkoo.AdiumMessageStyle')
+        self.session.config.get_or_set('b_enable_spell_check', False)
+        self.session.config.get_or_set('b_download_folder_per_account', False)
+
     def on_preferences_changed(self, use_http, proxy, session_id, service):
         '''called when the preferences on login change'''
         self.config.session = session_id
@@ -416,29 +440,7 @@ class Controller(object):
             self.window.content.clear_connect()
 
         self._new_session()
-
-        # set default values if not already set
-        self.session.config.get_or_set('b_conv_minimized', True)
-        self.session.config.get_or_set('b_mute_sounds', False)
-        self.session.config.get_or_set('b_play_send', True)
-        self.session.config.get_or_set('b_play_nudge', True)
-        self.session.config.get_or_set('b_play_first_send', True)
-        self.session.config.get_or_set('b_play_type', True)
-        self.session.config.get_or_set('b_play_contact_online', True)
-        self.session.config.get_or_set('b_play_contact_offline', True)
-        self.session.config.get_or_set('b_notify_contact_online', True)
-        self.session.config.get_or_set('b_notify_contact_offline', True)
-        self.session.config.get_or_set('b_notify_receive_message', True)
-        self.session.config.get_or_set('b_show_userpanel', True)
-        self.session.config.get_or_set('b_show_emoticons', True)
-        self.session.config.get_or_set('b_show_header', True)
-        self.session.config.get_or_set('b_show_info', True)
-        self.session.config.get_or_set('b_show_toolbar', True)
-        self.session.config.get_or_set('b_allow_auto_scroll', True)
-        self.session.config.get_or_set('adium_theme',
-                'renkoo.AdiumMessageStyle')
-        self.session.config.get_or_set('b_enable_spell_check', False)
-        self.session.config.get_or_set('b_download_folder_per_account', False)
+        self._set_default_values()
 
         self.timeout_id = glib.timeout_add(500,
                 self.session.signals._handle_events)

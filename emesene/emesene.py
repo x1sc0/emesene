@@ -433,8 +433,8 @@ class Controller(object):
         self.session.login(account.account, account.password, account.status,
             proxy, host, port, use_http)
         
-        if not self.session.load_config():
-            self._set_default_values()
+        self.session.load_config()
+        self._set_default_values()
 
         if not on_reconnect:
             self.on_preferences_changed(use_http, proxy, session_id,

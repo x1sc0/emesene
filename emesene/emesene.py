@@ -198,13 +198,13 @@ class Controller(object):
 
         self._save_login_dimensions()
         self._set_location(self.window)
-
         self.window.go_login(self.on_login_connect,
             self.on_preferences_changed, self.config,
             self.config_dir, self.config_path, proxy,
             use_http, self.config.session, cancel_clicked, no_autologin)
         self.tray_icon.set_login()
-        self.window.show()
+        if self.session is None:
+            self.window.show()
 
     def _new_session(self):
         '''create a new session object'''
@@ -374,6 +374,7 @@ class Controller(object):
 
     def _set_default_values(self):
         '''set default values if not already set'''
+        self.session.config.get_or_set('b_window_minimized', False) 
         self.session.config.get_or_set('b_conv_minimized', True)
         self.session.config.get_or_set('b_mute_sounds', False)
         self.session.config.get_or_set('b_play_send', True)
@@ -412,6 +413,7 @@ class Controller(object):
         self.go_login()
         self.window.content.clear_all()
         self.window.content.show_error(reason)
+        self.window.show()
 
     def on_login_succeed(self):
         '''callback called on login succeed'''
@@ -444,7 +446,10 @@ class Controller(object):
                     'avatars', 'last')
             self.window.go_connect(self.on_cancel_login, self.avatar_path,
                     self.config)
-            self.window.show()
+            if self.session.config.b_window_minimized:
+                self.window.hide()
+            else:
+                self.window.show()
         else:
             self.window.content.clear_connect()
 

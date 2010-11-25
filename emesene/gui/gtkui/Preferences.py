@@ -396,6 +396,8 @@ class Interface(BaseTable):
         BaseTable.__init__(self, 4, 1)
         self.session = session
         self.append_markup('<b>'+_('Main window:')+'</b>')
+        self.append_check(_('Start minimized'),
+            'session.config.b_window_minimized')
         self.append_check(_('Show user panel'),
             'session.config.b_show_userpanel')
         self.append_markup('<b>'+_('Conversation window:')+'</b>')

@@ -193,7 +193,7 @@ class MainMenu(gtk.Menu):
 
         self.disconnect = gtk.ImageMenuItem(gtk.STOCK_DISCONNECT)
         self.disconnect.connect('activate',
-            lambda *args: self.handler.on_disconnect_selected())
+            lambda *args: main_window.get_child().on_disconnect())
         self.quit = gtk.ImageMenuItem(gtk.STOCK_QUIT)
         self.quit.connect('activate',
             lambda *args: self.handler.on_quit_selected())

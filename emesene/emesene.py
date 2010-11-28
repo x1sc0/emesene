@@ -28,7 +28,6 @@ import glib
 import gettext
 import optparse
 import shutil
-import gtk
 
 import string
 
@@ -230,17 +229,9 @@ class Controller(object):
 
         self._remove_subscriptions()
 
-<<<<<<< HEAD
-        for toplevel in gtk.window_list_toplevels():
-            toplevel.hide()
-
         if self.conversations:
+            self.conversations.get_parent().hide()
             self._on_conversation_window_close()
-=======
-        for conv_manager in self.conversations:
-            conv_manager.hide_all()
-            self._on_conversation_window_close(conv_manager)
->>>>>>> 34936aecdc212416761591f8b8fc2aaa5814cbf1
 
         if self.timeout_id:
             glib.source_remove(self.timeout_id)

@@ -208,6 +208,10 @@ class MainWindow(gtk.VBox):
 
     def on_disconnect(self):
         '''callback called when the disconnect option is selected'''
+        
+        for toplevel in gtk.window_list_toplevels():
+            toplevel.hide()
+
         self.contact_list.contact_selected.unsubscribe(
             self._on_contact_selected)
         self.contact_list.group_selected.unsubscribe(self._on_group_selected)

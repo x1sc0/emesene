@@ -28,6 +28,7 @@ import glib
 import gettext
 import optparse
 import shutil
+import gtk
 
 import string
 
@@ -228,8 +229,11 @@ class Controller(object):
         '''close session'''
 
         self._remove_subscriptions()
+
+        for toplevel in gtk.window_list_toplevels():
+            toplevel.hide()
+
         if self.conversations:
-            self.conversations.get_parent().hide()
             self._on_conversation_window_close()
 
         if self.timeout_id:
